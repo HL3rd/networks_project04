@@ -33,3 +33,9 @@ $ ./netpong --host 41045
 ./netpong student00.cse.nd.edu 41045
 ```
 Note that the above example assumes that the two players are on different hosts. If player 1 and player 2 are on the same host, then different ports must be used.
+
+## Project Contents
+Below are the directories and files included in this project:
+* .
+** Makefile     -- the makefile for building the executables 
+** netpong.c    -- the source code to build the executable netpong, which runs the pong game for each player
