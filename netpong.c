@@ -1,28 +1,47 @@
+/* netpong.c */
+
+/* * * * * * * * * * * * * * * *
+ * Authors:
+ *    Blake Trossen (btrossen)
+ *    Horacio Lopez (hlopez1)
+ * * * * * * * * * * * * * * * */
+
 #include <ncurses.h>
 #include <stdlib.h>
 #include <pthread.h>
 #include <unistd.h>
 #include <string.h>
 #include <sys/time.h>
+#include <signal.h>
+#include <errno.h>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
+#include "utils.h"
+
+/* Define Macros */
+#define streq(a, b) (strcmp(a, b) == 0)
 #define WIDTH 43
 #define HEIGHT 21
 #define PADLX 1
 #define PADRX WIDTH - 2
 
-// Global variables recording the state of the game
-// Position of ball
-int ballX, ballY;
-// Movement of ball
-int dx, dy;
-// Position of paddles
-int padLY, padRY;
-// Player scores
-int scoreL, scoreR;
+/* Define Globals */
+// global variables recording the state of the game
+int ballX, ballY;       // Position of ball
+int dx, dy;             // Movement of ball
+int padLY, padRY;       // Position of paddles
+int scoreL, scoreR;     // Player scores
+WINDOW *win;            // ncurses window
 
-// ncurses window
-WINDOW *win;
+// other global variables
+int is_host = 0;
 
+/* Define Game Functions */
 /* Draw the current game state to the screen
  * ballX: X position of the ball
  * ballY: Y position of the ball
@@ -34,7 +53,7 @@ WINDOW *win;
 void draw(int ballX, int ballY, int padLY, int padRY, int scoreL, int scoreR) {
     // Center line
     int y;
-    for(y = 1; y < HEIGHT-1; y++) {
+    for (y = 1; y < HEIGHT-1; y++) {
         mvwaddch(win, y, WIDTH / 2, ACS_VLINE);
     }
     // Score
@@ -43,12 +62,12 @@ void draw(int ballX, int ballY, int padLY, int padRY, int scoreL, int scoreR) {
     // Ball
     mvwaddch(win, ballY, ballX, ACS_BLOCK);
     // Left paddle
-    for(y = 1; y < HEIGHT - 1; y++) {
+    for (y = 1; y < HEIGHT - 1; y++) {
         int ch = (y >= padLY - 2 && y <= padLY + 2)? ACS_BLOCK : ' ';
         mvwaddch(win, y, PADLX, ch);
     }
     // Right paddle
-    for(y = 1; y < HEIGHT - 1; y++) {
+    for (y = 1; y < HEIGHT - 1; y++) {
         int ch = (y >= padRY - 2 && y <= padRY + 2)? ACS_BLOCK : ' ';
         mvwaddch(win, y, PADRX, ch);
     }
@@ -82,7 +101,7 @@ void countdown(const char *message) {
     box(popup, 0, 0);
     mvwprintw(popup, 1, 2, message);
     int countdown;
-    for(countdown = 3; countdown > 0; countdown--) {
+    for (countdown = 3; countdown > 0; countdown--) {
         mvwprintw(popup, 2, w / 2, "%d", countdown);
         wrefresh(popup);
         sleep(1);
@@ -103,31 +122,31 @@ void tock() {
     // Move the ball
     ballX += dx;
     ballY += dy;
-    
+
     // Check for paddle collisions
     // padY is y value of closest paddle to ball
     int padY = (ballX < WIDTH / 2) ? padLY : padRY;
     // colX is x value of ball for a paddle collision
     int colX = (ballX < WIDTH / 2) ? PADLX + 1 : PADRX - 1;
-    if(ballX == colX && abs(ballY - padY) <= 2) {
+    if (ballX == colX && abs(ballY - padY) <= 2) {
         // Collision detected!
         dx *= -1;
         // Determine bounce angle
-        if(ballY < padY) dy = -1;
-        else if(ballY > padY) dy = 1;
+        if (ballY < padY) dy = -1;
+        else if (ballY > padY) dy = 1;
         else dy = 0;
     }
 
     // Check for top/bottom boundary collisions
-    if(ballY == 1) dy = 1;
-    else if(ballY == HEIGHT - 2) dy = -1;
-    
+    if (ballY == 1) dy = 1;
+    else if (ballY == HEIGHT - 2) dy = -1;
+
     // Score points
-    if(ballX == 0) {
+    if (ballX == 0) {
         scoreR = (scoreR + 1) % 100;
         reset();
         countdown("SCORE -->");
-    } else if(ballX == WIDTH - 1) {
+    } else if (ballX == WIDTH - 1) {
         scoreL = (scoreL + 1) % 100;
         reset();
         countdown("<-- SCORE");
@@ -140,19 +159,19 @@ void tock() {
  * Updates global pad positions
  */
 void *listenInput(void *args) {
-    while(1) {
-        switch(getch()) {
+    while (1) {
+        switch (getch()) {
             case KEY_UP: padRY--;
              break;
             case KEY_DOWN: padRY++;
              break;
-            case 'w': padLY--;
-             break;
-            case 's': padLY++;
-             break;
+            // case 'w': padLY--;
+            //  break;
+            // case 's': padLY++;
+            //  break;
             default: break;
        }
-    }       
+    }
     return NULL;
 }
 
@@ -169,17 +188,229 @@ void initNcurses() {
     mvwaddch(win, HEIGHT-1, WIDTH / 2, ACS_BTEE);
 }
 
+/* Define Network Functions */
+int open_socket_server(const char *port) {
+    // get linked list of DNS results for corresponding host and port
+    struct addrinfo hints;
+	memset(&hints, 0, sizeof(hints));
+    hints.ai_family     = AF_INET;      // return IPv4 choices
+    hints.ai_socktype   = SOCK_STREAM;  // use TCP (SOCK_DGRAM for UDP)
+    hints.ai_flags      = AI_PASSIVE;   // use all interfaces
+
+    struct addrinfo *results;
+    int status;
+    if ((status = getaddrinfo(NULL, port, &hints, &results)) != 0) {    // NULL indicates localhost
+        fprintf(stderr, "%s:\terror:\tgetaddrinfo failed: %s\n", __FILE__, gai_strerror(status));
+        return -1;
+    }
+
+    // iterate through results and attempt to allocate a socket, bind, and listen
+    int server_fd = -1;
+    struct addrinfo *p;
+    for (p = results; p != NULL && server_fd < 0; p = p->ai_next) {
+        // allocate the socket
+        if ((server_fd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) < 0) {
+            fprintf(stderr, "%s:\terror:\tfailed to make socket: %s\n", __FILE__, strerror(errno));
+            continue;
+           }
+
+        // bind the socket to the port
+        if (bind(server_fd, p->ai_addr, p->ai_addrlen) < 0) {
+            fprintf(stderr, "%s:\terror:\tfailed to bind: %s\n", __FILE__, strerror(errno));
+            close(server_fd);
+            server_fd = -1;
+            continue;
+        }
+
+        // listen to the socket
+        if (listen(server_fd, SOMAXCONN) < 0) {
+            fprintf(stderr, "%s:\terror:\tfailed to listen: %s\n", __FILE__, strerror(errno));
+            close(server_fd);
+            server_fd = -1;
+            continue;
+        }
+    }
+
+    // free the linked list of address results
+    freeaddrinfo(results);
+
+    return server_fd;
+}
+
+FILE *accept_client(int server_fd) {
+    struct sockaddr client_addr;
+    socklen_t client_len = sizeof(struct sockaddr);
+
+    // accept the incoming connection by creating a new socket for the client
+    int client_fd = accept(server_fd, &client_addr, &client_len);
+    if (client_fd < 0) {
+        fprintf(stderr, "%s:\terror:\tfailed to accept client: %s\n", __FILE__, strerror(errno));
+    }
+
+    FILE *client_file = fdopen(client_fd, "w+");
+    if (!client_file) {
+        fprintf(stderr, "%s:\terror:\tfailed to fdopen: %s\n", __FILE__, strerror(errno));
+        close(client_fd);
+    }
+
+    return client_file;
+}
+
+FILE *open_socket_client(char *host, char *port) {
+	// get linked list of DNS results for corresponding host and port
+    struct addrinfo hints;
+	memset(&hints, 0, sizeof(hints));
+    hints.ai_family     = PF_INET;      // return IPv4 and IPv6 choices
+    hints.ai_socktype   = SOCK_STREAM;  // use TCP (SOCK_DGRAM for UDP)
+    hints.ai_flags      = AI_PASSIVE;   // use all interfaces
+
+	struct addrinfo *results;
+    int status;
+    if ((status = getaddrinfo(host, port, &hints, &results)) != 0) {    // NULL indicates localhost
+        fprintf(stderr, "%s:\terror:\tgetaddrinfo failed: %s\n", __FILE__, gai_strerror(status));
+        return NULL;
+    }
+
+    // iterate through results and attempt to allocate a socket and connect
+    int client_fd = -1;
+    struct addrinfo *p;
+    for (p = results; p != NULL && client_fd < 0; p = p->ai_next) {
+		// allocate the socket
+        if ((client_fd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) < 0) {
+            fprintf(stderr, "%s:\terror:\tunable to make socket: %s\n", __FILE__, strerror(errno));
+            continue;
+    	}
+
+		// connect to the host
+   		if (connect(client_fd, p->ai_addr, p->ai_addrlen) < 0) {
+   		    close(client_fd);
+   		    client_fd = -1;
+   		    continue;
+   		}
+    }
+
+    // free the linked list of address results
+    freeaddrinfo(results);
+
+    if (client_fd < 0) {
+        fprintf(stderr, "%s:\terror:\tfailed to make socket to connect to %s:%s: %s\n", __FILE__, host, port, strerror(errno));
+        return NULL;
+    }
+
+    /* Open file stream from socket file descriptor */
+    FILE *client_file = fdopen(client_fd, "w+");
+    if (client_file == NULL) {
+        fprintf(stderr, "%s:\terror:\tfailed to fdopen: %s\n", __FILE__, strerror(errno));
+        close(client_fd);
+        return NULL;
+    }
+
+    return client_file;
+}
+
+void handler(int signal) {
+    if (is_host) {
+        // send termination message to challenger
+
+        // clean up ncurses
+        endwin();
+
+        // exit
+        endwin();
+
+    } else {
+
+    }
+    // do cleanup tasks (send termination message to peer, close socket cleanly, etc.)
+    endwin(); // clean up ncurses
+    exit(0);
+}
+
+/* Main Execution */
 int main(int argc, char *argv[]) {
-    // Process args
-    // refresh is clock rate in microseconds
-    // This corresponds to the movement speed of the ball
-    int refresh;
-    char difficulty[10]; 
-    printf("Please select the difficulty level (easy, medium or hard): ");
-    scanf("%s", &difficulty);
-    if(strcmp(difficulty, "easy") == 0) refresh = 80000;
-    else if(strcmp(difficulty, "medium") == 0) refresh = 40000;
-    else if(strcmp(difficulty, "hard") == 0) refresh = 20000;
+    // process command line arguments
+    if (argc != 3) {
+		fprintf(stderr, "%s:\terror:\tincorrect number of arguments!\n", __FILE__);
+        fprintf(stderr, "usage:\n");
+		fprintf(stderr, "  host:       %s --host [port]\n", __FILE__);
+        fprintf(stderr, "  challenger: %s [hostname] [port]\n", __FILE__);
+		return EXIT_FAILURE;
+	}
+
+    char *host = NULL;
+    if (streq(argv[1], "--host")) {
+        is_host = 1;
+    } else {
+        host = argv[1];
+    }
+
+	char *port = argv[2];
+
+    int refresh;            // refresh is clock rate in microseconds, corresponds to the movement speed of the ball
+    char difficulty[10];
+    FILE *client_file;
+    if (is_host) {
+        // get refresh rate
+        printf("Please select the difficulty level (easy, medium or hard): ");
+        scanf("%s", &difficulty);
+        if      (streq(difficulty, "easy"))    refresh = 80000;
+        else if (streq(difficulty, "medium"))  refresh = 40000;
+        else if (streq(difficulty, "hard"))    refresh = 20000;
+
+        // open a socket
+        int server_fd = open_socket_server(port);
+        if (server_fd < 0) {
+            fprintf(stderr, "%s:\terror:\tfailed to open server file\n", __FILE__);
+            return EXIT_FAILURE;
+        }
+
+        do {
+            // accept incoming client connection
+            client_file = accept_client(server_fd);
+        } while (!client_file);
+
+        // wait for a challenger to establish a game session
+        char buffer[BUFSIZ] = {0};
+        do {
+            fgets(buffer, BUFSIZ, client_file);
+            if (streq(buffer, "CHALLENGE EXTENDED\n")) { break; }
+            fprintf(stderr, "%s:\terror:\tunexpected message received: %s\n", __FILE__, buffer);
+        } while (1);
+
+        fputs("CHALLENGE ACCEPTED\n", client_file); fflush(client_file);
+        memset(buffer, 0, BUFSIZ);
+        strcat(buffer, difficulty);
+        strcat(buffer, "\n");
+        fputs(buffer, client_file); fflush(client_file);
+    } else {
+        // connect to host
+        client_file = open_socket_client(host, port);
+        if (!client_file) {
+            fprintf(stderr, "%s:\terror:\tfailed to open server file\n", __FILE__);
+            return EXIT_FAILURE;
+        }
+
+        fputs("CHALLENGE EXTENDED\n", client_file); fflush(client_file);
+        char buffer[BUFSIZ] = {0};
+        fgets(buffer, BUFSIZ, client_file);
+        if (!streq(buffer, "CHALLENGE ACCEPTED\n")) {
+            fprintf(stderr, "%s:\terror:\thost rejected request with response: %s\n", __FILE__, buffer);
+            return EXIT_FAILURE;
+        }
+
+        // get the difficulty level
+        memset(buffer, 0, BUFSIZ);
+        fgets(buffer, BUFSIZ, client_file);
+        rstrip(buffer);
+        if      (streq(buffer, "easy"))     refresh = 80000;
+        else if (streq(buffer, "medium"))   refresh = 40000;
+        else if (streq(buffer, "hard"))     refresh = 20000;
+        else {
+            fprintf(stderr, "%s:\terror:\treceived invalid difficulty level from host: %s\n", __FILE__, buffer);
+            return EXIT_FAILURE;
+        }
+
+    }
 
     // Set up ncurses environment
     initNcurses();
@@ -187,14 +418,14 @@ int main(int argc, char *argv[]) {
     // Set starting game state and display a countdown
     reset();
     countdown("Starting Game");
-    
+
     // Listen to keyboard input in a background thread
     pthread_t pth;
     pthread_create(&pth, NULL, listenInput, NULL);
 
     // Main game loop executes tock() method every REFRESH microseconds
     struct timeval tv;
-    while(1) {
+    while (1) {
         gettimeofday(&tv,NULL);
         unsigned long before = 1000000 * tv.tv_sec + tv.tv_usec;
         tock(); // Update game state
@@ -203,10 +434,10 @@ int main(int argc, char *argv[]) {
         unsigned long toSleep = refresh - (after - before);
         // toSleep can sometimes be > refresh, e.g. countdown() is called during tock()
         // In that case it's MUCH bigger because of overflow!
-        if(toSleep > refresh) toSleep = refresh;
+        if (toSleep > refresh) toSleep = refresh;
         usleep(toSleep); // Sleep exactly as much as is necessary
     }
-    
+
     // Clean up
     pthread_join(pth, NULL);
     endwin();

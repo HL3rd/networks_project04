@@ -12,7 +12,7 @@ PHONY	= all clean
 
 all: $(TARGETS)
 
-netpong: netpong.c
+netpong: netpong.c utils.c
 	$(CC) $(CFLAGS) $^ -o $@
 
 clean:
