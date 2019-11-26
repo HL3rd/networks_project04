@@ -157,26 +157,6 @@ void tock() {
     draw(ballX, ballY, padLY, padRY, scoreL, scoreR);
 }
 
-/* Listen to keyboard input
- * Updates global pad positions
- */
-void *listenInput(void *args) {
-    while (1) {
-        switch (getch()) {
-            case KEY_UP: padRY--;
-             break;
-            case KEY_DOWN: padRY++;
-             break;
-            // case 'w': padLY--;
-            //  break;
-            // case 's': padLY++;
-            //  break;
-            default: break;
-       }
-    }
-    return NULL;
-}
-
 void initNcurses() {
     initscr();
     cbreak();
@@ -311,8 +291,6 @@ FILE *open_socket_client(char *host, char *port) {
 }
 
 void handler(int signal) {
-    fputs("in handler!\n", debug_file); fflush(debug_file);
-
     // send the termination message to the opponent
     fputs("EXIT\n", client_file); fflush(client_file);
 
@@ -320,6 +298,50 @@ void handler(int signal) {
     fclose(client_file);    // close the client file
 
     exit(0);
+}
+
+/* Listen to keyboard input
+ * Updates global pad positions
+ */
+void *listenInput(void *args) {
+    while (1) {
+        switch (getch()) {
+            case KEY_UP:
+                if (is_host) {
+                    padRY--;
+                    fputs("PAD_R\n", client_file); fflush(client_file);
+                    char new_y[BUFSIZ] = {0};
+                    sprintf(new_y, "%d\n", padRY);
+                    fputs(new_y, client_file); fflush(client_file);
+                } else {
+                    padLY--;
+                    fputs("PAD_L\n", client_file); fflush(client_file);
+                    char new_y[BUFSIZ] = {0};
+                    sprintf(new_y, "%d\n", padLY);
+                    fputs(new_y, client_file); fflush(client_file);
+                }
+
+                break;
+            case KEY_DOWN:
+                if (is_host) {
+                    padRY++;
+                    fputs("PAD_R\n", client_file); fflush(client_file);
+                    char new_y[BUFSIZ] = {0};
+                    sprintf(new_y, "%d\n", padRY);
+                    fputs(new_y, client_file); fflush(client_file);
+                } else {
+                    padLY++;
+                    fputs("PAD_L\n", client_file); fflush(client_file);
+                    char new_y[BUFSIZ] = {0};
+                    sprintf(new_y, "%d\n", padLY);
+                    fputs(new_y, client_file); fflush(client_file);
+                }
+
+                break;
+            default: break;
+       }
+    }
+    return NULL;
 }
 
 void *listenNetwork(void *args) {
@@ -351,9 +373,19 @@ void *listenNetwork(void *args) {
         }
 
         if (streq(message, "PAD_L\n")) {            // left paddle moves
-            printf("%s", message);
+            memset(message, 0, BUFSIZ);
+            do {
+                fgets(message, BUFSIZ, client_file);
+            } while (strlen(message) == 0);
+            rstrip(message);
+            padLY = atoi(message);
         } else if (streq(message, "PAD_R\n")) {     // right paddle moves
-            printf("%s", message);
+            memset(message, 0, BUFSIZ);
+            do {
+                fgets(message, BUFSIZ, client_file);
+            } while (strlen(message) == 0);
+            rstrip(message);
+            padRY = atoi(message);
         } else if (streq(message, "BALL\n")) {      // ball moves
             printf("%s", message);
         } else if (streq(message, "SCORE_L\n")) {   // update left-player's score
@@ -363,6 +395,8 @@ void *listenNetwork(void *args) {
         } else {
             fprintf(stderr, "%s:\terror:\treceived unknown message from opponent: %s", __FILE__, message);
         }
+
+        memset(message, 0, BUFSIZ);
     }
 }
 
