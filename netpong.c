@@ -40,6 +40,8 @@ WINDOW *win;            // ncurses window
 
 // other global variables
 int is_host = 0;
+FILE *client_file;
+FILE *debug_file;
 
 /* Define Game Functions */
 /* Draw the current game state to the screen
@@ -309,21 +311,59 @@ FILE *open_socket_client(char *host, char *port) {
 }
 
 void handler(int signal) {
-    if (is_host) {
-        // send termination message to challenger
+    fputs("in handler!\n", debug_file); fflush(debug_file);
 
-        // clean up ncurses
-        endwin();
+    // send the termination message to the opponent
+    fputs("EXIT\n", client_file); fflush(client_file);
 
-        // exit
-        endwin();
+    endwin();               // clean up ncurses
+    fclose(client_file);    // close the client file
 
-    } else {
-
-    }
-    // do cleanup tasks (send termination message to peer, close socket cleanly, etc.)
-    endwin(); // clean up ncurses
     exit(0);
+}
+
+void *listenNetwork(void *args) {
+    // open a nonblocking stream for the client file
+    int copy_client_fd = dup(fileno(client_file));
+    int flags = fcntl(copy_client_fd, F_GETFL, 0);
+    flags |= O_NONBLOCK;
+    fcntl(copy_client_fd, F_SETFL, flags);
+    FILE *client_file_nonblocking = fdopen(copy_client_fd, "w+");
+    if (!client_file_nonblocking) {
+        fprintf(stderr, "%s:\terror:\tfailed to fdopen: %s\n", __FILE__, strerror(errno));
+        close(copy_client_fd);
+        return NULL;
+    }
+
+    char message[BUFSIZ] = {0};
+    while (1) {
+        char *test = fgets(message, BUFSIZ, client_file_nonblocking);
+        if (!test && errno == EWOULDBLOCK) {
+            usleep(50);
+            continue;
+        }
+
+        if (streq(message, "EXIT\n")) {
+            endwin();               // clean up ncurses
+            fclose(client_file);    // close the client file
+            fclose(client_file_nonblocking);
+            exit(0);
+        }
+
+        if (streq(message, "PAD_L\n")) {            // left paddle moves
+            printf("%s", message);
+        } else if (streq(message, "PAD_R\n")) {     // right paddle moves
+            printf("%s", message);
+        } else if (streq(message, "BALL\n")) {      // ball moves
+            printf("%s", message);
+        } else if (streq(message, "SCORE_L\n")) {   // update left-player's score
+            printf("%s", message);
+        } else if (streq(message, "SCORE_R\n")) {   // update right-player's score
+            printf("%s", message);
+        } else {
+            fprintf(stderr, "%s:\terror:\treceived unknown message from opponent: %s", __FILE__, message);
+        }
+    }
 }
 
 /* Main Execution */
@@ -346,9 +386,13 @@ int main(int argc, char *argv[]) {
 
 	char *port = argv[2];
 
+    /***
+    below is for debug purposes only
+    ***/
+    debug_file = fopen("debug_file.txt", "w+");
+
     int refresh;            // refresh is clock rate in microseconds, corresponds to the movement speed of the ball
     char difficulty[10];
-    FILE *client_file;
     if (is_host) {
         // get refresh rate
         printf("Please select the difficulty level (easy, medium or hard): ");
@@ -412,8 +456,15 @@ int main(int argc, char *argv[]) {
 
     }
 
+    // Set up signal handler
+    signal(SIGINT, handler);
+
     // Set up ncurses environment
     initNcurses();
+
+    // Start the network thread to listen to the opponent
+    pthread_t pth_network;
+    pthread_create(&pth_network, NULL, listenNetwork, NULL);
 
     // Set starting game state and display a countdown
     reset();
