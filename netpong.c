@@ -36,6 +36,7 @@ int ballX, ballY;       // Position of ball
 int dx, dy;             // Movement of ball
 int padLY, padRY;       // Position of paddles
 int scoreL, scoreR;     // Player scores
+int roundNum;           // Round number
 WINDOW *win;            // ncurses window
 
 // other global variables
@@ -114,6 +115,35 @@ void countdown(const char *message) {
     padLY = padRY = HEIGHT / 2; // Wipe out any input that accumulated during the delay
 }
 
+/* Display a message with the winner of the game
+ * This method is activated when a side scores 2 points
+ * message: 'WIN -->' or '<-- WIN'
+ * Will concatenate message with Round # and newline
+ */
+void displayWinner(const char *winMessage) {
+    int h = 4;
+    int w = strlen(winMessage) + 4;
+    WINDOW *popup = newwin(h, w, (LINES - h) / 2, (COLS - w) / 2);
+    box(popup, 0, 0);
+    char roundBuf[50];
+    sprintf(roundBuf, "Round %d", roundNum);
+    mvwprintw(popup, 1, 2, roundBuf);
+    mvwprintw(popup, 2, 2, winMessage);
+    int countdown;
+    for (countdown = 3; countdown > 0; countdown--) {
+        mvwprintw(popup, 3, w / 2, "%d", countdown);
+        wrefresh(popup);
+        sleep(1);
+    }
+    wclear(popup);
+    wrefresh(popup);
+    delwin(popup);
+    scoreR = 0;                 // Clear scoreR
+    scoreL = 0;                 // Clear scoreL
+    roundNum += (roundNum + 1) % 100;   // Increment round number
+    padLY = padRY = HEIGHT / 2; // Wipe out any input that accumulated during the delay
+}
+
 /* Perform periodic game functions:
  * 1. Move the ball
  * 2. Detect collisions
@@ -147,11 +177,21 @@ void tock() {
     if (ballX == 0) {
         scoreR = (scoreR + 1) % 100;
         reset();
-        countdown("SCORE -->");
+        if (scoreR == 2) {
+            // Show winner
+            displayWinner("WIN -->");
+        } else {
+            countdown("SCORE -->");
+        }
     } else if (ballX == WIDTH - 1) {
         scoreL = (scoreL + 1) % 100;
         reset();
-        countdown("<-- SCORE");
+        if (scoreL == 2) {
+            // Show winner
+            displayWinner("<-- WIN");
+        } else {
+            countdown("<-- SCORE");
+        }
     }
     // Finally, redraw the current state
     draw(ballX, ballY, padLY, padRY, scoreL, scoreR);
