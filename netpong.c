@@ -44,6 +44,8 @@ int is_host = 0;
 FILE *client_file;
 FILE *debug_file;
 
+// pthread_mutex_t
+
 /* Define Game Functions */
 /* Draw the current game state to the screen
  * ballX: X position of the ball
@@ -353,14 +355,7 @@ void *listenInput(void *args) {
                     char new_y[BUFSIZ] = {0};
                     sprintf(new_y, "%d\n", padRY);
                     fputs(new_y, client_file); fflush(client_file);
-                } else {
-                    padLY--;
-                    fputs("PAD_L\n", client_file); fflush(client_file);
-                    char new_y[BUFSIZ] = {0};
-                    sprintf(new_y, "%d\n", padLY);
-                    fputs(new_y, client_file); fflush(client_file);
                 }
-
                 break;
             case KEY_DOWN:
                 if (is_host) {
@@ -369,14 +364,25 @@ void *listenInput(void *args) {
                     char new_y[BUFSIZ] = {0};
                     sprintf(new_y, "%d\n", padRY);
                     fputs(new_y, client_file); fflush(client_file);
-                } else {
+                }
+                break;
+            case 'w':
+                if (!is_host) {
+                    padLY--;
+                    fputs("PAD_L\n", client_file); fflush(client_file);
+                    char new_y[BUFSIZ] = {0};
+                    sprintf(new_y, "%d\n", padLY);
+                    fputs(new_y, client_file); fflush(client_file);
+                }
+                break;
+            case 's':
+                if (!is_host) {
                     padLY++;
                     fputs("PAD_L\n", client_file); fflush(client_file);
                     char new_y[BUFSIZ] = {0};
                     sprintf(new_y, "%d\n", padLY);
                     fputs(new_y, client_file); fflush(client_file);
                 }
-
                 break;
             default: break;
        }
