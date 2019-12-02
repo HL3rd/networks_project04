@@ -44,7 +44,8 @@ int is_host = 0;
 FILE *client_file;
 FILE *debug_file;
 
-// pthread_mutex_t
+// need a lock to handle to lock active items
+pthread_mutex_t boardLock = PTHREAD_MUTEX_INITIALIZER;
 
 /* Define Game Functions */
 /* Draw the current game state to the screen
@@ -181,18 +182,27 @@ void tock() {
         reset();
         if (scoreR == 2) {
             // Show winner
+            // pthread_mutex_unlock(&boardLock);
             displayWinner("WIN -->");
+            // pthread_mutex_lock(&boardLock);
         } else {
+            // pthread_mutex_unlock(&boardLock);
             countdown("SCORE -->");
+            // pthread_mutex_lock(&boardLock);
         }
+
     } else if (ballX == WIDTH - 1) {
         scoreL = (scoreL + 1) % 100;
         reset();
         if (scoreL == 2) {
             // Show winner
+            // pthread_mutex_unlock(&boardLock);
             displayWinner("<-- WIN");
+            // pthread_mutex_lock(&boardLock);
         } else {
+            // pthread_mutex_unlock(&boardLock);
             countdown("<-- SCORE");
+            // pthread_mutex_lock(&boardLock);
         }
     }
     // Finally, redraw the current state
@@ -349,6 +359,7 @@ void *listenInput(void *args) {
     while (1) {
         switch (getch()) {
             case KEY_UP:
+                pthread_mutex_lock(&boardLock);
                 if (is_host) {
                     padRY--;
                     fputs("PAD_R\n", client_file); fflush(client_file);
@@ -356,8 +367,10 @@ void *listenInput(void *args) {
                     sprintf(new_y, "%d\n", padRY);
                     fputs(new_y, client_file); fflush(client_file);
                 }
+                pthread_mutex_unlock(&boardLock);
                 break;
             case KEY_DOWN:
+                pthread_mutex_lock(&boardLock);
                 if (is_host) {
                     padRY++;
                     fputs("PAD_R\n", client_file); fflush(client_file);
@@ -365,8 +378,10 @@ void *listenInput(void *args) {
                     sprintf(new_y, "%d\n", padRY);
                     fputs(new_y, client_file); fflush(client_file);
                 }
+                pthread_mutex_unlock(&boardLock);
                 break;
             case 'w':
+                pthread_mutex_lock(&boardLock);
                 if (!is_host) {
                     padLY--;
                     fputs("PAD_L\n", client_file); fflush(client_file);
@@ -374,8 +389,10 @@ void *listenInput(void *args) {
                     sprintf(new_y, "%d\n", padLY);
                     fputs(new_y, client_file); fflush(client_file);
                 }
+                pthread_mutex_unlock(&boardLock);
                 break;
             case 's':
+                pthread_mutex_lock(&boardLock);
                 if (!is_host) {
                     padLY++;
                     fputs("PAD_L\n", client_file); fflush(client_file);
@@ -383,6 +400,7 @@ void *listenInput(void *args) {
                     sprintf(new_y, "%d\n", padLY);
                     fputs(new_y, client_file); fflush(client_file);
                 }
+                pthread_mutex_unlock(&boardLock);
                 break;
             default: break;
        }
@@ -441,8 +459,9 @@ void *listenNetwork(void *args) {
         } else {
             fprintf(stderr, "%s:\terror:\treceived unknown message from opponent: %s", __FILE__, message);
         }
-
+        //pthread_mutex_lock(&boardLock);
         memset(message, 0, BUFSIZ);
+        //pthread_mutex_unlock(&boardLock);
     }
 }
 
@@ -542,10 +561,6 @@ int main(int argc, char *argv[]) {
     // Set up ncurses environment
     initNcurses();
 
-    // Start the network thread to listen to the opponent
-    pthread_t pth_network;
-    pthread_create(&pth_network, NULL, listenNetwork, NULL);
-
     // Set starting game state and display a countdown
     reset();
     countdown("Starting Game");
@@ -554,12 +569,18 @@ int main(int argc, char *argv[]) {
     pthread_t pth;
     pthread_create(&pth, NULL, listenInput, NULL);
 
+    // Start the network thread to listen to the opponent
+    pthread_t pth_network;
+    pthread_create(&pth_network, NULL, listenNetwork, NULL);
+
     // Main game loop executes tock() method every REFRESH microseconds
     struct timeval tv;
     while (1) {
         gettimeofday(&tv,NULL);
         unsigned long before = 1000000 * tv.tv_sec + tv.tv_usec;
+        pthread_mutex_lock(&boardLock);
         tock(); // Update game state
+        pthread_mutex_unlock(&boardLock);
         gettimeofday(&tv,NULL);
         unsigned long after = 1000000 * tv.tv_sec + tv.tv_usec;
         unsigned long toSleep = refresh - (after - before);
