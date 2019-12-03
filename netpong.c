@@ -167,17 +167,26 @@ void tock() {
         // Collision detected!
         dx *= -1;
         // Determine bounce angle
-        if (ballY < padY) dy = -1;
-        else if (ballY > padY) dy = 1;
-        else dy = 0;
+        if (ballY < padY) {
+            dy = -1;
+        } else if (ballY > padY) {
+            dy = 1;
+        } else {
+            dy = 0;
+        }
     }
 
     // Check for top/bottom boundary collisions
-    if (ballY == 1) dy = 1;
-    else if (ballY == HEIGHT - 2) dy = -1;
+    if (ballY == 1) {
+        dy = 1;
+        // MISINg
+    } else if (ballY == HEIGHT - 2) {
+        dy = -1;
+        // MISSING STUFF Here
+    }
 
     // Score points
-    if (ballX == 0) {
+    if (ballX == 0) { // right side scores
         scoreR = (scoreR + 1) % 100;
         reset();
         if (scoreR == 2) {
@@ -191,7 +200,7 @@ void tock() {
             // pthread_mutex_lock(&boardLock);
         }
 
-    } else if (ballX == WIDTH - 1) {
+    } else if (ballX == WIDTH - 1) { // left side scores
         scoreL = (scoreL + 1) % 100;
         reset();
         if (scoreL == 2) {
