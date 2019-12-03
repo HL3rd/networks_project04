@@ -24,7 +24,7 @@ $ ./netpong --host PORT
 ```
 #### Player 2 (Challenger)
 ```
-./netpong HOSTNAME PORT
+$ ./netpong HOSTNAME PORT
 ```
 
 ### Example
@@ -35,7 +35,7 @@ $ ./netpong --host 41045
 ```
 #### Player 2 (Challenger)
 ```
-./netpong student00.cse.nd.edu 41045
+$ ./netpong student00.cse.nd.edu 41045
 ```
 Note that the above example assumes that the two players are on different hosts. If player 1 and player 2 are on the same host, then different ports must be used.
 
