@@ -153,7 +153,7 @@ void displayWinner(const char *winMessage) {
  * 3. Detect scored points and react accordingly
  * 4. Draw updated game state to the screen
  */
-void tock() {
+void tock(FILE *client_file) {
     // Move the ball
     ballX += dx;
     ballY += dy;
@@ -179,10 +179,8 @@ void tock() {
     // Check for top/bottom boundary collisions
     if (ballY == 1) {
         dy = 1;
-        // MISINg
     } else if (ballY == HEIGHT - 2) {
         dy = -1;
-        // MISSING STUFF Here
     }
 
     // Score points
@@ -206,8 +204,19 @@ void tock() {
             countdown("<-- SCORE");
         }
     }
+
     // Finally, redraw the current state
     draw(ballX, ballY, padLY, padRY, scoreL, scoreR);
+
+    // Send ballX and ballY to the challenger
+    if (is_host) {
+        char message[BUFSIZ] = {0};
+        sprintf(message, "BALL-%d,%d\n", ballX, ballY);
+        fputs(message, client_file); fflush(client_file);
+        memset(message, 0, BUFSIZ);
+        sprintf(message, "SCORE-%d,%d\n", scoreL, scoreR);
+        fputs(message, client_file); fflush(client_file);
+    }
 }
 
 void initNcurses() {
@@ -453,12 +462,51 @@ void *listenNetwork(void *args) {
             }
             rstrip(token);
             padRY = atoi(token);
-        } else if (streq(message, "BALL\n")) {      // ball moves
-            printf("%s", message);
-        } else if (streq(message, "SCORE_L\n")) {   // update left-player's score
-            printf("%s", message);
-        } else if (streq(message, "SCORE_R\n")) {   // update right-player's score
-            printf("%s", message);
+        } else if (streq(token, "BALL")) {      // ball moves
+            token = strtok(NULL, ",");
+            if (!token) {
+                fprintf(stderr, "%s:\terror:\tno token!", __FILE__);
+            }
+            if (abs(atoi(token) - ballX) != 0) {
+                if (!is_host) {
+                    pthread_mutex_lock(&boardLock);
+                    ballX = atoi(token);
+                    pthread_mutex_unlock(&boardLock);
+                }
+            }
+            token = strtok(NULL, ",");
+            if (!token) {
+                fprintf(stderr, "%s:\terror:\tno token!", __FILE__);
+            }
+            rstrip(token);
+            if (abs(atoi(token) - ballY) != 0) {
+                if (!is_host) {
+                    pthread_mutex_lock(&boardLock);
+                    ballY = atoi(token);
+                    pthread_mutex_unlock(&boardLock);
+                }
+            }
+        } else if (streq(token, "SCORE")) {   // update scores
+            token = strtok(NULL, ",");
+            if (abs(atoi(token) - scoreL) != 0) {
+                if (!is_host) {
+                    pthread_mutex_lock(&boardLock);
+                    scoreL = atoi(token);
+                    pthread_mutex_unlock(&boardLock);
+                }
+            }
+            token = strtok(NULL, ",");
+            if (!token) {
+                fprintf(stderr, "%s:\terror:\tno token!", __FILE__);
+            }
+            rstrip(token);
+            if (abs(atoi(token) - scoreR) != 0) {
+                if (!is_host) {
+                    pthread_mutex_lock(&boardLock);
+                    scoreR = atoi(token);
+                    pthread_mutex_unlock(&boardLock);
+                }
+            }
         } else {
             fprintf(stderr, "%s:\terror:\treceived unknown message from opponent: %s", __FILE__, message);
         }
@@ -491,7 +539,7 @@ int main(int argc, char *argv[]) {
     /***
     below is for debug purposes only
     ***/
-    debug_file = fopen("debug_file.txt", "w+");
+    // debug_file = fopen("debug_file.txt", "w+");
 
     int refresh;            // refresh is clock rate in microseconds, corresponds to the movement speed of the ball
     char difficulty[10];
@@ -583,7 +631,7 @@ int main(int argc, char *argv[]) {
         gettimeofday(&tv,NULL);
         unsigned long before = 1000000 * tv.tv_sec + tv.tv_usec;
         pthread_mutex_lock(&boardLock);
-        tock(); // Update game state
+        tock(client_file); // Update game state
         pthread_mutex_unlock(&boardLock);
         gettimeofday(&tv,NULL);
         unsigned long after = 1000000 * tv.tv_sec + tv.tv_usec;
