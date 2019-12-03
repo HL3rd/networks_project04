@@ -36,7 +36,7 @@ int ballX, ballY;       // Position of ball
 int dx, dy;             // Movement of ball
 int padLY, padRY;       // Position of paddles
 int scoreL, scoreR;     // Player scores
-int roundNum;           // Round number
+int roundNum = 1;       // Round number
 WINDOW *win;            // ncurses window
 
 // other global variables
