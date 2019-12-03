@@ -4,6 +4,11 @@ Authors:
 * Blake Trossen (btrossen)
 * Horacio Lopez (hlopez1)
 
+## How to Play
+In our game of pong, the host player is on the right and the challenger is on
+the left. The host player uses the UP/DOWN keys to move the right paddle, while
+the challenger uses the w/s keys to move the left paddle.
+
 ## Getting Started
 ### Compilation
 To compile, perform the following commands:
