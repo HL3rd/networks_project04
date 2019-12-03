@@ -358,6 +358,7 @@ void handler(int signal) {
 
     endwin();               // clean up ncurses
     fclose(client_file);    // close the client file
+    pthread_mutex_destroy(&boardLock);  // destroy the board lock mutex
 
     exit(0);
 }
@@ -645,5 +646,6 @@ int main(int argc, char *argv[]) {
     // Clean up
     pthread_join(pth, NULL);
     endwin();
+    pthread_mutex_destroy(&boardLock);
     return 0;
 }
