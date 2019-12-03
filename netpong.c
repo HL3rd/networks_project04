@@ -191,13 +191,9 @@ void tock() {
         reset();
         if (scoreR == 2) {
             // Show winner
-            // pthread_mutex_unlock(&boardLock);
             displayWinner("WIN -->");
-            // pthread_mutex_lock(&boardLock);
         } else {
-            // pthread_mutex_unlock(&boardLock);
             countdown("SCORE -->");
-            // pthread_mutex_lock(&boardLock);
         }
 
     } else if (ballX == WIDTH - 1) { // left side scores
@@ -205,13 +201,9 @@ void tock() {
         reset();
         if (scoreL == 2) {
             // Show winner
-            // pthread_mutex_unlock(&boardLock);
             displayWinner("<-- WIN");
-            // pthread_mutex_lock(&boardLock);
         } else {
-            // pthread_mutex_unlock(&boardLock);
             countdown("<-- SCORE");
-            // pthread_mutex_lock(&boardLock);
         }
     }
     // Finally, redraw the current state
@@ -468,9 +460,7 @@ void *listenNetwork(void *args) {
         } else {
             fprintf(stderr, "%s:\terror:\treceived unknown message from opponent: %s", __FILE__, message);
         }
-        //pthread_mutex_lock(&boardLock);
         memset(message, 0, BUFSIZ);
-        //pthread_mutex_unlock(&boardLock);
     }
 }
 
