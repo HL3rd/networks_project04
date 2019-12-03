@@ -43,3 +43,5 @@ Note that the above example assumes that the two players are on different hosts.
 Below are the directories and files included in this project:
   * Makefile     -- the makefile for building the executables
   * netpong.c    -- the source code to build the executable netpong, which runs the pong game for each player
+  * utils.h      -- a header file for utilities used in netpong.c
+  * utils.c      -- implementation for the utilities header file
