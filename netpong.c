@@ -309,15 +309,13 @@ void *listenInput(void *args) {
             case KEY_UP:
                 if (is_host) {
                     padRY--;
-                    fputs("PAD_R\n", client_file); fflush(client_file);
                     char new_y[BUFSIZ] = {0};
-                    sprintf(new_y, "%d\n", padRY);
+                    sprintf(new_y, "PAD_R-%d\n", padRY);
                     fputs(new_y, client_file); fflush(client_file);
                 } else {
                     padLY--;
-                    fputs("PAD_L\n", client_file); fflush(client_file);
                     char new_y[BUFSIZ] = {0};
-                    sprintf(new_y, "%d\n", padLY);
+                    sprintf(new_y, "PAD_L-%d\n", padLY);
                     fputs(new_y, client_file); fflush(client_file);
                 }
 
@@ -325,15 +323,13 @@ void *listenInput(void *args) {
             case KEY_DOWN:
                 if (is_host) {
                     padRY++;
-                    fputs("PAD_R\n", client_file); fflush(client_file);
                     char new_y[BUFSIZ] = {0};
-                    sprintf(new_y, "%d\n", padRY);
+                    sprintf(new_y, "PAD_R-%d\n", padRY);
                     fputs(new_y, client_file); fflush(client_file);
                 } else {
                     padLY++;
-                    fputs("PAD_L\n", client_file); fflush(client_file);
                     char new_y[BUFSIZ] = {0};
-                    sprintf(new_y, "%d\n", padLY);
+                    sprintf(new_y, "PAD_L-%d\n", padLY);
                     fputs(new_y, client_file); fflush(client_file);
                 }
 
@@ -372,20 +368,26 @@ void *listenNetwork(void *args) {
             exit(0);
         }
 
-        if (streq(message, "PAD_L\n")) {            // left paddle moves
-            memset(message, 0, BUFSIZ);
-            do {
-                fgets(message, BUFSIZ, client_file);
-            } while (strlen(message) == 0);
-            rstrip(message);
-            padLY = atoi(message);
-        } else if (streq(message, "PAD_R\n")) {     // right paddle moves
-            memset(message, 0, BUFSIZ);
-            do {
-                fgets(message, BUFSIZ, client_file);
-            } while (strlen(message) == 0);
-            rstrip(message);
-            padRY = atoi(message);
+        char *message_copy = strdup(message);
+        char *token = strtok(message_copy, "-");
+        if (!token) {
+            fprintf(stderr, "%s:\terror:\tno token from message: %s", __FILE__, message);
+        }
+
+        if (streq(token, "PAD_L")) {            // left paddle moves
+            token = strtok(NULL, "-");
+            if (!token) {
+                fprintf(stderr, "%s:\terror:\tno token!", __FILE__);
+            }
+            rstrip(token);
+            padLY = atoi(token);
+        } else if (streq(token, "PAD_R")) {     // right paddle moves
+            token = strtok(NULL, "-");
+            if (!token) {
+                fprintf(stderr, "%s:\terror:\tno token!", __FILE__);
+            }
+            rstrip(token);
+            padRY = atoi(token);
         } else if (streq(message, "BALL\n")) {      // ball moves
             printf("%s", message);
         } else if (streq(message, "SCORE_L\n")) {   // update left-player's score
@@ -396,6 +398,7 @@ void *listenNetwork(void *args) {
             fprintf(stderr, "%s:\terror:\treceived unknown message from opponent: %s", __FILE__, message);
         }
 
+        if (message_copy) { free(message_copy); }
         memset(message, 0, BUFSIZ);
     }
 }
